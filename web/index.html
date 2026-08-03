@@ -96,14 +96,14 @@ description: "The equal-area U.S. House cartogram, solved live in the browser. C
         <span class="cs-label">Placement <output class="cs-out" id="cs-mode-out">hand-drawn slots</output></span>
         <select class="cs-select" id="cs-placement">
           <option value="auto" selected>Slots, falling back to force</option>
-          <option value="soft">Soft body — no hand-drawn layout</option>
+          <option value="free">Free — no hand-drawn layout</option>
         </select>
-        <p class="cs-note" id="cs-soft-note" hidden>
-          Every state is packed with a lattice of equal circles, held in shape by
-          shape matching and pushed apart until nothing overlaps — then the real
-          state lines are carried back through the lattice. Uses no hand-drawn
-          layout at all, and takes a few seconds, so it runs only when you press
-          <strong>Re-solve</strong>.
+        <p class="cs-note" id="cs-free-note" hidden>
+          Every state keeps its exact outline. Each is pinned at its own centroid,
+          the whole arrangement is spread apart until nothing overlaps, and then
+          gravity draws it back together while the states are held apart along
+          their borders. Uses no hand-drawn layout at all — and because the
+          states are only moved, never bent, every shape stays exactly itself.
         </p>
         <label class="cs-label" for="cs-gravity" style="margin-top:8px">
           Compaction <output class="cs-out" id="cs-gravity-out">0.005</output>

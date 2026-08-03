@@ -33,7 +33,7 @@
     matchOn: $("cs-match-on"), seatTwo: $("cs-seat-two"),
     gravity: $("cs-gravity"), gravityOut: $("cs-gravity-out"), modeOut: $("cs-mode-out"),
     links: $("cs-links"), linksOut: $("cs-links-out"),
-    placement: $("cs-placement"), softNote: $("cs-soft-note"),
+    placement: $("cs-placement"), freeNote: $("cs-free-note"),
     seatEditor: $("cs-seat-editor"), seatGrid: $("cs-seat-grid"),
     seatTotal: $("cs-seat-total"), seatCopy: $("cs-seat-copy"), seatOne: $("cs-seat-one"),
     solve: $("cs-solve"), auto: $("cs-auto"), reset: $("cs-reset"),
@@ -126,10 +126,9 @@
       c.parentElement.style.opacity = uploaded ? "0.5" : "";
     }
 
-    const soft = el.placement.value === "soft";
-    el.softNote.hidden = !soft;
+    el.freeNote.hidden = el.placement.value !== "free";
     for (const c of [el.gravity, el.links, el.ghost])
-      c.disabled = soft || (c === el.ghost && uploaded);
+      c.disabled = c === el.ghost && uploaded;
 
     el.seatEditor.hidden = el.seats.value !== "custom";
     if (el.seats.value === "custom") updateSeatTotal();
@@ -270,9 +269,6 @@
   let timer = null;
   const schedule = (ms) => {
     syncOutputs();
-    // the soft layout costs seconds, so it never runs off a slider -- only when
-    // Re-solve is pressed, which is what the mode note promises
-    if (el.placement.value === "soft") { markStale(true); return; }
     if (!el.auto.checked) return;
     clearTimeout(timer);
     timer = setTimeout(solve, ms);
@@ -292,7 +288,6 @@
     path(g.type === "Polygon" ? g.coordinates : g.coordinates.flat());
 
   function render(res) {
-    if (res.soft) return renderSoft(res);
     const frag = document.createDocumentFragment();
     const defs = document.createElementNS(SVG, "defs");
     const byState = {};
@@ -408,98 +403,8 @@
 
     stats(res);
   }
-
-  /* The soft layout returns deformed OUTLINES rather than a transform, so this
-   * draws the geometry straight rather than putting a raw outline inside a
-   * transformed group. The clipPath trick still applies: cells are deformed by
-   * the same field, and the outline clips them. */
-  function renderSoft(res) {
-    const frag = document.createDocumentFragment();
-    const defs = document.createElementNS(SVG, "defs");
-    const palette = payload.palette;
-    const match = res.match && res.match.byState;
-    const cells = res.soft.cells;
-
-    res.soft.outlines.forEach((geom, i) => {
-      const st = payload.states[i];
-      const d = path(geom.flat());
-      const g = document.createElementNS(SVG, "g");
-      const mine = cells && cells[i];
-
-      if (mine) {
-        const cp = document.createElementNS(SVG, "clipPath");
-        cp.setAttribute("id", "cs-soft-" + i);
-        const cpp = document.createElementNS(SVG, "path");
-        cpp.setAttribute("d", d);
-        cp.appendChild(cpp);
-        defs.appendChild(cp);
-
-        const inner = document.createElementNS(SVG, "g");
-        inner.setAttribute("clip-path", "url(#cs-soft-" + i + ")");
-        const pair = match && match[st.st];
-        mine.cells.forEach((cell, k) => {
-          if (!cell) return;
-          const q = document.createElementNS(SVG, "path");
-          q.setAttribute("class", "cs-cell");
-          q.setAttribute("d", path([cell]));
-          const dist = pair && pair[k];
-          q.setAttribute("fill", dist ? (palette[dist.p] || palette.Other) : "var(--cs-state)");
-          if (dist) {
-            const ttl = document.createElementNS(SVG, "title");
-            ttl.textContent = dist.id + " — " + dist.p;
-            q.appendChild(ttl);
-          }
-          inner.appendChild(q);
-        });
-        g.appendChild(inner);
-
-        const hull = document.createElementNS(SVG, "path");
-        hull.setAttribute("class", "cs-hull");
-        hull.setAttribute("d", d);
-        g.appendChild(hull);
-      } else {
-        const q = document.createElementNS(SVG, "path");
-        q.setAttribute("class", "cs-outline-path");
-        q.setAttribute("d", d);
-        g.appendChild(q);
-      }
-      frag.appendChild(g);
-    });
-
-    const labels = document.createElementNS(SVG, "g");
-    res.soft.centres.forEach((c, i) => {
-      const t = document.createElementNS(SVG, "text");
-      t.setAttribute("class", "cs-lab");
-      t.setAttribute("x", c[0]); t.setAttribute("y", c[1]);
-      t.textContent = payload.states[i].st;
-      labels.appendChild(t);
-    });
-    frag.appendChild(labels);
-
-    map.textContent = "";
-    map.appendChild(defs);
-    map.appendChild(frag);
-    stats(res);
-  }
-
   function stats(res) {
     const p = res.place;
-    if (p.mode === "soft") {
-      el.modeOut.textContent = "soft body";
-      el.statPlace.textContent =
-        `${p.circles.toLocaleString()} circles, ${p.iterations} iterations, ` +
-        `${(p.ms / 1000).toFixed(1)} s`;
-      el.statAdj.textContent = `${p.borders} borders · ${p.anchors} segment anchors`;
-      el.statCells.textContent = res.cells
-        ? `carved, deformed with the outlines · worst area ratio ${res.cells.worstRatio.toFixed(2)} (${res.cells.worstSt})`
-        : "off";
-      el.statMatch.textContent = res.match
-        ? `${res.match.ms} ms · total cost ${Math.round(res.match.cost).toLocaleString()} px²`
-        : "—";
-      el.statRef.textContent = "n/a — no hand-drawn layout used";
-      warn("");
-      return;
-    }
     el.statPlace.textContent = p.iterations === 0
       ? "no relaxation (padding 0)"
       : `${p.iterations} iterations, ${p.ms} ms · ` +
@@ -745,7 +650,7 @@
   for (const c of [el.divisor, el.padding, el.points, el.gravity, el.links])
     c.addEventListener("input", () => schedule(220));
   for (const c of [el.seats, el.cells, el.seed]) c.addEventListener("change", () => schedule(0));
-  el.placement.addEventListener("change", () => { syncOutputs(); if (el.placement.value !== "soft") solve(); else markStale(true); });
+  el.placement.addEventListener("change", () => { syncOutputs(); solve(); });
   for (const c of [el.tweaks, el.groupNE, el.colour]) c.addEventListener("change", () => schedule(0));
   el.ghost.addEventListener("change", () => schedule(0));
 

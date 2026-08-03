@@ -19,15 +19,19 @@ jcervas.github.io, which was the only surviving copy of the code. It is a
 faithful copy of what is live, not a recovery of the original sources. Two
 things follow, and both matter:
 
-- **The publish step is not here.** Something used to copy these files into
-  jcervas.github.io, rename `solver.js` and `studio.worker.js` to include a
-  content hash, and stamp `?v=` cache-busting strings onto the CSS and JS
-  references. That script was not recovered. Publishing is currently a manual
-  copy — see below.
-- **Nothing in jcervas.github.io is overwritten automatically any more.** The
-  warning in that repo's `_config.yml`, that hand edits to generated map pages
-  get wiped on the next publish, is dormant while no publish step exists. It
-  becomes true again the moment one is written.
+- **The publish step has been rewritten**, in `bin/publish.js`. The original was
+  lost with everything else, but the scheme it used was recoverable by reading
+  the published output: the content hash is the first eight hex characters of
+  the file's SHA-256. That reproduces `solver.8ed51b2d.js`, `studio.css`
+  (`e71a68a4`), and all four placement assets exactly. The one thing it does not
+  reproduce is the old worker filename, whose hash matches no surviving form of
+  that file — harmless, since the hash exists only to stop a browser serving a
+  stale solver.
+- **Hand edits in jcervas.github.io are overwritten again.** The warning in that
+  repo's `_config.yml` — that edits to the generated map pages are wiped on the
+  next publish — went dormant when the tooling was lost, and `bin/publish.js`
+  makes it true once more. Edit the studio and the placement walkthrough here,
+  never there.
 
 ## What was changed during reconstruction
 
@@ -71,10 +75,20 @@ placement/
 pipeline that produced them (R, per the studio's own copy: "the same cartogram,
 solved in your browser instead of in R") is not in this repository either.
 
-## Publishing, until a script exists
+## Publishing
 
-Copy into `jcervas.github.io/maps/`, restoring the hashed names and cache
-busting, then update the references in the published `index.html` to match. The
-hash is over the file contents; any scheme works as long as the name changes
-when the contents do, since its only job is to stop browsers serving a stale
-solver.
+```
+node bin/publish.js ../jcervas.github.io
+```
+
+Hashes the solver, substitutes that name into the worker, hashes the worker,
+copies everything across, rewrites the references and the `?v=` strings, stamps
+the date, and deletes any hashed file the run did not itself write. Idempotent:
+re-running with nothing changed reproduces the same names.
+
+Two things it is careful about, both learned the hard way. The worker names the
+solver, so the solver must be hashed and substituted *before* the worker is
+hashed, or the name will not describe the file it is attached to. And the
+substitution is confined to the Liquid asset paths — a blanket replace of
+`solver.js` also rewrites the page's own prose, which credits `web/solver.js`
+and mentions `sh/12_test_solver.js`.
