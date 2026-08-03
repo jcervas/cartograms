@@ -27,10 +27,11 @@ things follow, and both matter:
   reproduce is the old worker filename, whose hash matches no surviving form of
   that file — harmless, since the hash exists only to stop a browser serving a
   stale solver.
-- **Nothing in jcervas.github.io is overwritten automatically any more.** The
-  warning in that repo's `_config.yml`, that hand edits to generated map pages
-  get wiped on the next publish, is dormant while no publish step exists. It
-  becomes true again the moment one is written.
+- **Hand edits in jcervas.github.io are overwritten again.** The warning in that
+  repo's `_config.yml` — that edits to the generated map pages are wiped on the
+  next publish — went dormant when the tooling was lost, and `bin/publish.js`
+  makes it true once more. Edit the studio and the placement walkthrough here,
+  never there.
 
 ## What was changed during reconstruction
 
