@@ -1,0 +1,32 @@
+/* Scoped to .cgdoc: the host styles headings and images but not tables,
+   code or rules, and it owns the bare element selectors. */
+.cgdoc { --cgd-rule: #e2e6ea; --cgd-muted: #5b636f; --cgd-panel: #f6f7f8; }
+@media (prefers-color-scheme: dark) {
+  .cgdoc { --cgd-rule: #2a3038; --cgd-muted: #99a3b0; --cgd-panel: #1b1f26; }
+}
+:root[data-theme="dark"] .cgdoc { --cgd-rule: #2a3038; --cgd-muted: #99a3b0; --cgd-panel: #1b1f26; }
+:root[data-theme="light"] .cgdoc { --cgd-rule: #e2e6ea; --cgd-muted: #5b636f; --cgd-panel: #f6f7f8; }
+
+.cgdoc { margin-top: 2.5rem; }
+.cgdoc img { display: block; margin: 1.5rem 0; border: 1px solid var(--cgd-rule); border-radius: 4px; }
+.cgdoc table { border-collapse: collapse; width: 100%; max-width: 100%;
+  font-size: .93rem; margin: 1.25rem 0; }
+.cgdoc th, .cgdoc td {
+  text-align: left; padding: .5rem .85rem .5rem 0;
+  border-bottom: 1px solid var(--cgd-rule); vertical-align: top;
+}
+.cgdoc th { font-size: .78rem; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--cgd-muted); font-weight: 600; }
+.cgdoc code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em;
+  background: var(--cgd-panel); border: 1px solid var(--cgd-rule);
+  border-radius: 3px; padding: .1em .35em;
+}
+.cgdoc pre {
+  background: var(--cgd-panel); border: 1px solid var(--cgd-rule);
+  border-radius: 4px; padding: .8rem 1rem; overflow-x: auto; font-size: .88rem;
+}
+.cgdoc pre code { background: none; border: 0; padding: 0; font-size: 1em; }
+.cgdoc hr { border: 0; border-top: 1px solid var(--cgd-rule); margin: 2.25rem 0; }
+.cgdoc blockquote { margin: 1.25rem 0; padding-left: 1rem;
+  border-left: 3px solid var(--cgd-rule); color: var(--cgd-muted); }
