@@ -1,7 +1,7 @@
 ---
 layout: subpage
 title: "How the cartogram is built"
-description: "The whole pipeline behind the equal-area House cartograms: sizing every state to its seat count, placing them with soft bodies so nothing overlaps, carving each into equal-area district cells, and matching those cells to real districts."
+description: "The whole pipeline behind the equal-area House cartograms: sizing every state to its seat count, placing them so nothing overlaps while every state keeps its exact shape, carving each into equal-area district cells, and matching those cells to real districts."
 permalink: /maps/cartogram-placement/
 ---
 
@@ -121,85 +121,71 @@ did it — but it is drawn for one particular set of seat counts, and it stops
 working as soon as they change. Give every state two seats, as the Senate does,
 and Wyoming needs about six times the room its slot allows.
 
-**Soft bodies**, which need no hand-drawn layout at all and are the method the
-rest of this page describes.
+**The free layout**, which needs no hand-drawn layout at all and is the method
+the rest of this page describes.
 
-### Soft bodies
+### The free layout
 
-Each state is packed with a hex lattice of equal-radius circles and seeded at its
-true centroid. Then three rules run together until nothing moves:
+Every state keeps its exact outline. It may be moved and it may be resized, but
+it is never bent and never turned — a reader knows a state by its silhouette and
+its orientation together, so a tilted Florida costs more than the packing gains.
+Area stays exactly proportional to seats by construction, because a uniform
+scale is the only thing done to the shape.
 
-- **Shape.** The lattice is split into overlapping clusters and every cluster is
-  projected each step onto the best linear transform of its rest shape — shape
-  matching, after Müller et al. (2005).
-- **Borders.** Circles sitting on a shared border are tied to their counterparts
-  across it.
-- **Separation.** Circles belonging to different states may not overlap.
+Each state is pinned at its own centroid and the whole arrangement is then
+spread apart by a factor, so that nothing overlaps to begin with. From there
+three rules run together:
 
-Three things fall out of that, and each replaced something that had been fought
-for separately:
+- **Separation.** No two discs belonging to different states may come within
+  `padding`. Corrections are split between the pair inversely to mass, with mass
+  the drawn area, so a large state pulls a small one rather than the two meeting
+  in the middle.
+- **Gravity.** A decaying pull back toward the true centroid, which is what
+  turns a deliberately over-spread arrangement into a compact one.
+- **Borders.** Neighbours are sprung to a target distance — their original
+  centre spacing, scaled by how much the pair actually resized. If both halve,
+  their centres should come half as close.
 
-**Area becomes exact, not iterated.** A cluster's area is precisely `det(T)`
-times its rest area, so forcing `det(T) = 1` makes area-proportional-to-seats
-hold by construction. Before shape matching this was a correction loop that
-converged on the lattice and still left the drawn outlines 50–88% wrong.
+Three things are worth drawing out.
 
-**Folding becomes impossible rather than penalised.** A mass-spring lattice can
-pass through itself with every edge still at its rest length — the fold cancels,
-so the area measures correct while the outline carried through it comes out
-inside-out. Under shape matching that configuration is not available, because the
-only configurations available are `T q + c`.
+**The gap is a guarantee, not an average.** Samples sit every `padding/2` along
+each outline, so every point of a border is within `padding/4` of one. Forbid
+samples of different states from coming closer than `padding` and no two
+outlines can finish closer than `padding/2`, anywhere on the map. It is a bound
+that falls out of the sampling, not a number that happened to come out of a
+solve.
 
-**The gap comes free.** The circles are sampled inside the polygon but drawn with
-a radius slightly larger than the lattice spacing, so they bulge past the border.
-"Circles may not overlap" therefore already means "outlines may not overlap", and
-padding is not a separate rule. Undersizing that radius is what left Arizona
-drawn over New Mexico in an earlier version.
+**Springing neighbours to contact would collapse the map.** The obvious link
+force pulls each pair toward zero separation; a state with eight neighbours then
+takes eight full-strength pulls a pass, and chains of states concertina. Springing
+to a *target* distance instead leaves the arrangement free to breathe. The links
+also decay more slowly than gravity, because they have further to do: gravity
+only has to tighten a layout, while the links have to undo the initial spread.
 
-### The lattice is a cage, not the drawing
+**The spread is searched, not chosen.** Start from the largest region growth,
+since that is what room has to be made for, and escalate until the layout
+solves. Then bisect *downward*, because the first spread that works is rarely
+the tightest and a looser arrangement refits to a smaller map. On the U.S.
+states that takes the packing from 7.3% of the bounding box to 15.9%; at two
+seats each, from 1.0% to 6.5%.
 
-The circles are never drawn. Because the lattice keeps its position inside the
-state, it doubles as a deformation cage: once the solve is done the real state
-outline is carried back through it by moving least squares, and what appears on
-screen is the state.
+### What this gives up
 
-### Where two states touch, not just that they touch
+The states no longer touch, and they are no longer quite where geography puts
+them. Both are the price of refusing to deform: the space that a bendable state
+would have absorbed by changing shape has to go somewhere, and it goes into the
+gaps and into the arrangement.
 
-Borders are cut into segments and the circles on each segment are tied across the
-line. A single link between two centres of mass says only *that* two states are
-neighbours — and it drags Connecticut toward the middle of New York, which is
-upstate, when what actually holds them together is a stretch of border down by
-the Sound. Several anchors along one border also pin orientation, because a
-turned or displaced state cannot satisfy all of them at once.
+An earlier version of this page packed each state with a lattice of circles and
+carried the outline back through it, which filled the frame more tightly and let
+states interlock the way real borders do. It was dropped for this. Deforming the
+outline is a large amount of machinery — shape matching, an annealed shape
+constraint, a deformation cage, border anchors — spent on making the distortion
+*look* acceptable, and it still left every state subtly the wrong shape. Moving
+a state is honest in a way that bending it is not: here the shape error is zero
+and the area error is zero, and everything that is wrong with the map is wrong
+in a way the reader can see.
 
-Measured on a test neither method optimises — fit the best uniform scale and
-translation taking the true state centres to the drawn ones, then report the
-residual:
-
-| | arrangement error |
-|---|---|
-| One link per border, centroid to centroid | 33.1% |
-| Anchors along each border | **29.0%** |
-
-Anchors are thinned to 25 px apart. That is measured rather than chosen: closer
-spacing gives more anchors but a *worse* arrangement, and at 14 px it produces
-overlapping pairs. A long border outvoting every short one is the failure mode,
-and thinning is the control for it — California/Nevada gets ten anchors,
-Delaware/Maryland two.
-
-### What is annealed, and why
-
-Shape matching and separation are directly opposed: one wants a state to be an
-undeformed copy of itself, the other wants it out of its neighbour's way. Held at
-constant strength they trade blows forever and the run ends with hundreds of
-pairs still overlapping. The shape constraint is therefore annealed toward a
-floor — never to zero, because passes with it switched off are free to push
-lattice points anywhere, and they smeared outlines by a median of 17%.
-
-Rotation is deliberately **not** allowed. Shape matching normally blends toward
-the closest rotation, which is right for a physics simulation and wrong for a
-map: a reader identifies a state by its silhouette and its orientation together,
-so a turned New York reads as an error however well packed it is.
 
 ## 4. Carve into cells
 
@@ -291,7 +277,7 @@ properties — sixty checks, of which the ones that carry the most weight are:
 | `R/lib_geom.R` | Sampling, balancing, power diagram, half-plane clipping |
 | `R/lib_assign.R` | The Hungarian algorithm and its brute-force self-test |
 | `R/lib_discs.R` | Boundary discs and the rigid-body separation |
-| `web/solver.js` | The whole numerical half, ported: geometry, sampling, k-means, balancing, cells, adjacency, border segments, soft bodies, Hungarian |
+| `web/solver.js` | The whole numerical half, ported: geometry, sampling, k-means, balancing, cells, adjacency, disc relaxation, Hungarian |
 | `sh/12_test_solver.js` | Checks the port against the R build |
 
 Source: [github.com/jcervas/cartograms](https://github.com/jcervas/cartograms)

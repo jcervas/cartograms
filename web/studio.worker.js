@@ -18,7 +18,6 @@ const S = self.CartogramSolver;
 let payload = null;
 let cellCache = { key: null, value: null };
 let adjCache = null;
-let segCache = null;   // anchors along each shared border      // who borders whom -- a fact about the geography alone
 
 /* Adjacency is derived once per geography from the ORIGINAL outlines, since that
  * is the only place the real borders are. Verified against facts: on the U.S.
@@ -101,7 +100,12 @@ function place(p) {
   const W = payload.design.width, H = payload.design.height;
   // the tweaks are authored in design units on a 0.65 aspect; same conversion R uses
   const yScale = dh / (dw * 0.65);
-  const hasSlots = !payload.uploaded && payload.states.every((s) => s.slot);
+  /* "free" is now a mode the reader can choose, not only the fallback: it is
+   * what the soft-body layout used to offer -- a placement that needs no
+   * hand-drawn slots -- but reached by moving rigid states rather than by
+   * bending them. */
+  const hasSlots = p.placement !== "free"
+    && !payload.uploaded && payload.states.every((s) => s.slot);
 
   let mx = 0, my = 0;
   for (const s of payload.states) { mx += s.centroid[0]; my += s.centroid[1]; }
@@ -295,84 +299,6 @@ function place(p) {
   };
 }
 
-/* ------------------------------------------------------------ soft body ---- */
-
-/* The soft-body layout, which needs no hand-drawn slots at all: every region is
- * packed with a lattice of equal circles, held in shape by clustered shape
- * matching, and separated. It returns deformed OUTLINES rather than a transform,
- * so unlike the other two modes the renderer draws the geometry directly.
- *
- * It costs several seconds, which is why it runs only on an explicit re-solve. */
-function placeSoft(p, post) {
-  const t0 = performance.now();
-  const total = payload.totalArea;
-  const allSeats = payload.states.reduce((a, s) => a + seatsFor(s, p.seatKey, p.customSeats), 0);
-  const W = payload.design.width, H = payload.design.height;
-    /* 0.38 measured with a deterministic overlap test: it is the tightest packing
-   * that stays clean, and the numbers either side of it are worse (0.26 gives
-   * 10.7% coverage, 0.44 gives 25.1%). */
-  const cover = p.cover == null ? 0.38 : p.cover;
-
-  const scales = payload.states.map((s) => {
-    const k = seatsFor(s, p.seatKey, p.customSeats);
-    return Math.sqrt((W * H * cover * (k / allSeats)) / s.area);
-  });
-  const regions = payload.states.map((s, i) => ({
-    geom: toGeom(s.outline).map((part) =>
-      part.map((ring) => ring.map((c) => [c[0] * scales[i], c[1] * scales[i]]))),
-    centroid: s.centroid,
-    scale: scales[i],
-    mass: seatsFor(s, p.seatKey, p.customSeats),
-  }));
-
-  post(5, "finding borders");
-  const links = adjacencyOf().links;
-
-  /* Anchors along each shared border rather than one link between centroids.
-   * A centroid link drags Connecticut toward the middle of New York, which is
-   * upstate; anchors hold it against the stretch of border it actually shares,
-   * and several along a border pin orientation too. Cached with the geography,
-   * since it is a fact about the outlines alone. */
-  if (!segCache) {
-    segCache = S.borderSegments(payload.states.map((s) => toGeom(s.outline)), 2);
-  }
-  post(10, "packing");
-
-  const res = S.softLayout(regions, links, {
-    width: W, height: H, gap: p.padding == null ? 1 : Math.max(0.5, p.padding / 2),
-    neighbour: p.neighbour == null ? 1.2 : p.neighbour,
-    contacts: segCache,
-    onProgress: (f) => post(10 + Math.round(f * 80), "settling"),
-  });
-
-  post(92, "carrying the lines back");
-  const warped = regions.map((r, i) =>
-    r.geom.map((part) => part.map((ring) => ring.map((v) => res.warp(i, v)))));
-
-  // fit the finished map to the frame
-  let b = [Infinity, Infinity, -Infinity, -Infinity];
-  for (const g of warped) for (const part of g) for (const ring of part) for (const v of ring) {
-    b[0] = Math.min(b[0], v[0]); b[1] = Math.min(b[1], v[1]);
-    b[2] = Math.max(b[2], v[0]); b[3] = Math.max(b[3], v[1]);
-  }
-  const K = Math.min((W - 10) / (b[2] - b[0] || 1), (H - 10) / (b[3] - b[1] || 1));
-  const ox = (W - (b[2] - b[0]) * K) / 2 - b[0] * K;
-  const oy = (H - (b[3] - b[1]) * K) / 2 - b[1] * K;
-  const fit = (v) => [+(v[0] * K + ox).toFixed(1), +(v[1] * K + oy).toFixed(1)];
-  const place = (i, v) => fit(res.warp(i, [v[0] * scales[i], v[1] * scales[i]]));
-
-  return {
-    t0, res, scales, place,
-    outlines: warped.map((g) => g.map((part) => part.map((ring) => ring.map(fit)))),
-    centres: res.centres.map(fit),
-    stats: {
-      ms: Math.round(performance.now() - t0),
-      mode: "soft", circles: res.circles, iterations: res.iterations,
-      borders: links.length, anchors: res.anchors,
-    },
-  };
-}
-
 /* ---------------------------------------------------------- assignment ---- */
 
 /* Match this run's cells to the 2022 districts by minimum total squared
@@ -408,7 +334,6 @@ self.onmessage = (e) => {
   if (msg.type === "init") {
     payload = msg.payload;
     adjCache = null;
-    segCache = null;
     self.postMessage({ type: "ready", states: payload.states.length });
     return;
   }
@@ -426,33 +351,6 @@ self.onmessage = (e) => {
         if (p.colourBy === "party" && p.seatKey === "districts") matched = assign(carved);
       }
       post(100, "placing");
-
-      if (p.placement === "soft") {
-        const soft = placeSoft(p, post);
-        // the cells are carved in each state's own unscaled frame, so they go
-        // through exactly the same deformation the outline did
-        let cells = null;
-        if (carved) {
-          post(96, "carrying the cells");
-          cells = carved.states.map((c, i) => ({
-            st: c.st, k: c.k,
-            cells: c.cells.map((cell) =>
-              cell && cell.length >= 3 ? cell.map((v) => soft.place(i, v)) : null),
-          }));
-        }
-        self.postMessage({
-          type: "done", id: msg.id,
-          result: {
-            soft: { outlines: soft.outlines, centres: soft.centres, cells },
-            bodies: [], place: soft.stats,
-            cells: carved
-              ? { states: [], ms: carved.ms, worstRatio: carved.worstRatio, worstSt: carved.worstSt }
-              : null,
-            match: matched ? { byState: matched.byState, cost: matched.cost, ms: matched.ms } : null,
-          },
-        });
-        return;
-      }
 
       const placed = place(p);
 
